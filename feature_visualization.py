@@ -1,7 +1,7 @@
 """
 Requirements:
 (Writing down makes your thinking clear!)
-    - simple plotting:
+    - simple plotting
     - transformation plotting
     - decision region plotting
     - decision boundary plotting
@@ -24,34 +24,35 @@ Design:
 ================================================================================
 """
 
+
 """ modules to import """
+import matplotlib as mpl
+rcParamsInline = dict(mpl.rcParams)
 try:
     from jupyterthemes import jtplot
-    jtplot.style(theme='chesterish')
+#     jtplot.style(theme='gruvboxl')
     # jtplot.style(context='paper', fscale=0.8, spines=False, gridlines='--')
-    # jtplot.reset()
 except ImportError:
     print('using default matplotlib style.')
-# %matplotlib inline
+import IPython
 import numpy as np
 import matplotlib.pyplot as plt
-from matplotlib.patches import ConnectionPatch
+from IPython.display import display, Markdown
+from matplotlib.patches import Patch, ConnectionPatch
 
 from switch import switch
 
 
 """ to be extend: sampling shape, sampling possibly. """
-def sampling(sampling_magnitude=5, *, sampling_style='square', \
-             data_style='numpy'):
+def sampling(sampling_style, data_style='numpy', sampling_magnitude=5):
     """
     :param sampling_magnitude:
         int type. this can be viewed as 'an adaptive sample size', which is \
         generated according to the `sampling_style` and feature dimension.
     """
-    if data_style != 'numpy':
-        print('please use numpy-style currently.')
-        return
     for case in switch(sampling_style):
+#         print(sampling_style)
+        """ do remember write the `break`!!!!!!! """
         if case('quadratic'):
             x = np.linspace(-1, 1, sampling_magnitude)
             result = np.column_stack([
@@ -60,18 +61,25 @@ def sampling(sampling_magnitude=5, *, sampling_style='square', \
             ])
             break
         if case('square'):
+#             if data_style == 'numpy':
             result = np.column_stack([
                 np.repeat(np.linspace(-1, 1, sampling_magnitude), \
                           sampling_magnitude),
                 np.tile(np.linspace(-1, 1, sampling_magnitude), \
                         sampling_magnitude),
             ])
+#                 .reshape(sampling_magnitude, sampling_magnitude, 2)
+#             elif data_style == 'matplotlib':
+#                 return np.mgrid[-1:1:2/sampling_magnitude, -1:1:2/sampling_magnitude]
+#             else:
+#                 raise AssertionError('illegal data style!')
             break
         if case('line'):
             result = np.column_stack([
                 np.zeros(sampling_magnitude),
                 np.linspace(-1, 1, sampling_magnitude)
             ])
+            break
         if case('random'):
             result = np.random.random((sampling_magnitude, 2))
             break
@@ -80,6 +88,7 @@ def sampling(sampling_magnitude=5, *, sampling_style='square', \
     for case in switch(data_style):
         if case('numpy'): return result; break
         if case('matplotlib'): return result.T; break
+#                 return np.stack((result[..., 0], result[..., 1]))
         if case('default'): raise AssertionError('illegal data style!')
 
 
@@ -114,98 +123,99 @@ def transform(feature_input_s, transform_matrix):
         return feature_input_s.dot(transform_matrix)
 
 
-""" transformation visualization interface. """
-""" high cohesion、low coupling!!! Remember this!! """
-def feature_plot(
-    *xy_coords, labels=None, label_method=None, connection_density=0, \
-    fig_size=(6, 6), tick_labelsize=9, spine_visible=False, line_style='co', \
-    markersize=3, connection_color='g'
-    ):
-    """
-    :param xy_coords:
-        array-like type. the data structure is supposed to hold a matplotlib- \
-        style, i.e. `xy_coords[0]` corresponds to x and y coordinates for the \
-        first graph, `xy_coords[1]` corresponds to x and y coordinates for the \
-        second graph, and so on.
-    """
-
-    assert xy_coords != ()
-    xy_coords = np.array(xy_coords)
-    quantity_of_graph = len(xy_coords)
-    sample_size = xy_coords[0, 0].size
-    """ the inputs (X, Y, C) of `pcolormesh` must be a 2-D array. """
-    if label_method: 
-        assert label_method in ('pcolormesh', 'tripcolor', 'contour', \
-            'contourf', 'tricontour', 'tricontourf') and labels is not None
+def reset():
+    """ ref: https://github.com/dunovank/jupyter-themes/blob/master/jupyterthemes/jtplot.py """
+    colors = [(0., 0., 1.), (0., .5, 0.), (1., 0., 0.), (.75, .75, 0.),
+            (.75, .75, 0.), (0., .75, .75), (0., 0., 0.)]
+    for code, color in zip("bgrmyck", colors):
+        rgb = mpl.colors.colorConverter.to_rgb(color)
+        mpl.colors.colorConverter.colors[code] = rgb
+        mpl.colors.colorConverter.cache[code] = rgb
+    mpl.rcParams.update(rcParamsInline)
+    mpl.rcParams['figure.facecolor'] = 'white'
+    mpl.rcParams['axes.facecolor'] = 'white'
+#     mpl.rcParams['figure.dpi'] = 72
     
-    fig, axes = plt.subplots(
-        nrows=1, ncols=quantity_of_graph,
-        figsize=(fig_size[0] * quantity_of_graph, fig_size[1]),
-        sharex=True, sharey=True
-    )
+    
+def style_initialize_(axes):
     axes = np.array(axes).flatten()
+    for ax in axes:
+        ax.grid(linestyle='--', alpha=1.)
+        ax.tick_params(labelsize=9)
+        for spine in ax.spines.values(): spine.set_visible(False)
 
-    """ a boolean value indicating triple """
-    FO_L_LM = np.array(
-        [quantity_of_graph == 2, labels is not None, bool(label_method)],
-    ).astype(np.int)
-    for i, ax in enumerate(axes):
-        ax.tick_params(labelsize=tick_labelsize)
-        for spine in ax.spines.values(): spine.set_visible(spine_visible)
-        """ see `switch.py` for more details. """
-        for case in switch(FO_L_LM, np.array_equal):
-            if case([0, 0, 0]) \
-            or case([1, 0, 0]):
-                ax.plot(*xy_coords[i], line_style, markersize=markersize)
-                break
-            if case([0, 1, 0]) \
-            or case([1, 1, 0]):
-                ax.scatter(*xy_coords[i], c=labels)
-                break
-            if case([1, 1, 1]):
-                ax.plot(*xy_coords[i], line_style, markersize=markersize)
-                getattr(ax, label_method)(*xy_coords[i], labels)
-                # cmap='RdBu_r', #facecolor='none', edgecolor='k', alpha=0.1
-                break
-            if case([0, 1, 1]):
-                getattr(ax, label_method)(*xy_coords[i], labels)
-                break
-            if case('default'):
-                raise AssertionError('Argument Error!')
-                
-    if connection_density:
-        """ 
-        `i`: sample index 
-        `sampling size`: sampling number in all samples
-        """
-        assert quantity_of_graph == 2
-        xy_coords = xy_coords.reshape(2, 2, -1)
-        for i in np.linspace(
-                0, sample_size - 1,
-                round(sample_size * connection_density)
-        ).astype(np.int):
-            """ 0 or 1-th phase | x or y-coordinates | i-th sample """
-            """ `axesB` is the first one. """
-            """ 
-            an equivalent form to params `xyA` and `xyB` assignment:
-            *xy_coords[: : -1, :, i],
-            """
-            con = ConnectionPatch(
-                xyA=xy_coords[1][:, i], xyB=xy_coords[0][:, i],
-                coordsA = 'data', coordsB = 'data',
-                arrowstyle = '<-',
-                axesA = axes[1], axesB = axes[0],
-                linewidth = 1.,
-                color = connection_color
-            )
-            axes[1].add_artist(con)
+
+def style_initialize(plt):
+    plt.rc(
+        'axes', 
+        grid=True,
+        titlesize=10,
+        labelsize=10,
+        labelpad=7
+    )
+    plt.rc(
+        'axes.spines',
+        left=False,
+        bottom=False,
+        top=False,
+        right=False,        
+    )
+    plt.rc(
+        'font',
+        size=9
+    )
+    plt.rc(
+        'lines', 
+        marker='o', 
+        markersize=1,
+        linestyle=' ',
+    )
+    plt.rc('grid', linestyle='--')
+    plt.rc('xtick', labelsize=7)
+    plt.rc('ytick', labelsize=7)
+    plt.rc('legend', fontsize=8)
     
-    plt.axis('equal')
-    plt.show()
+
+template = """<font face='Goudy Old Style' size=5><span style="color:rgb(0, 92, 84);">%s</span></font>"""
+template_2 = """<font face='Goudy Old Style'>%s</font>"""
+
+def md_display(text):
+    if IPython.get_ipython():
+        display(Markdown(template % text))
+    else:
+        print(text)
+    
+
+def connection_plot(axA, axB, dataA, dataB, density=1, *, color='g'):
+    """ 
+    `i`: sample index 
+    `sampling size`: sampling number in all samples
+    """
+    assert dataA.shape == dataB.shape and dataA.ndim == 2
+    sample_size = dataA.shape[0]
+    con_s = []
+    for i in np.linspace(
+        0, sample_size - 1, round(sample_size * density)
+    ).astype(np.int):
+        """ `axesB` is the first one. """
+        """ 
+        an equivalent form to params `xyA` and `xyB` assignment:
+        *xy_coords[: : -1, :, i],
+        """
+        con = ConnectionPatch(
+            xyA=dataA[i], xyB=dataB[i],
+            coordsA='data', coordsB='data',
+            arrowstyle='<-',
+            axesA=axA, axesB=axB,
+            linewidth=0.7, color=color, alpha=0.5,
+        )
+        axA.add_artist(con)
+        con_s.append(con)
+    return con_s
 
 
 """
 lesson:
-    - clear your boundary of interface.
+    - clear your boundary of interface: high cohesion、low coupling!!! Remember this!!
     - attention the multi-state combination occasion.
 """
