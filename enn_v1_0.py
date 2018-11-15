@@ -29,36 +29,55 @@ it.
     - 'x_1', power | matching by str -> more clear, and matching by str is easy.
     - [power1, power2, ...] for each idx -> less clear meaning, more memory, but more clear in structure. 
 """
-def get_terms_collection(quantity_of_variables, max_degree):
-    if max_degree == 1:
-        return [np.identity(quantity_of_variables, dtype=np.int32)]
+def get_terms_collection(quantity_of_vars, max_df):
+    """ max_df: degree of freedom """
+    if max_df == 1:
+        return [np.identity(quantity_of_vars, dtype=np.int32)]
 
     """
     1. another idea for implementing `terms_collection_s`: add a new arg \
     'all_pre_terms_collection' in function.
-    2. `tcfcdl`: terms_collection_for_certain_degree_list
     """
-    tcfcdl = get_terms_collection(quantity_of_variables, max_degree - 1)
+    """ 1~n-1 | 1~n """
+    one_to_max_minus_one_df_collection = get_terms_collection(
+        quantity_of_vars, max_df-1)
+    one_to_max_df_collection = one_to_max_minus_one_df_collection
 
-    terms_collection_for_one_smaller_degree = tcfcdl[-1]
-    terms_collection_for_cur_max_degree = []
+    """ n-1 | n """
+    max_minus_one_df_collection = one_to_max_minus_one_df_collection[-1]
+    max_df_collection = []
 
-    for idx in range(quantity_of_variables):
-        for pre_term in terms_collection_for_one_smaller_degree:
+    for idx in range(quantity_of_vars):
+        for pre_term in max_minus_one_df_collection:
             pre_term_ = pre_term.copy()
             pre_term_[idx] += 1
-            terms_collection_for_cur_max_degree.append(pre_term_)
+            max_df_collection.append(pre_term_)
         """
         another idea: generate `term_collector` by filtering something like \
         [1, 2], [2, 1] by set? seems wrong.
         """
-        terms_collection_for_one_smaller_degree = list(filter(
+        max_minus_one_df_collection = list(filter(
             lambda term: term[idx] == 0,
-            terms_collection_for_one_smaller_degree
+            max_minus_one_df_collection
         ))
-    tcfcdl.append(np.array(terms_collection_for_cur_max_degree))
-    return tcfcdl
+    one_to_max_df_collection.append(
+        np.array(max_df_collection))
+    
+    return one_to_max_df_collection
 
+
+def get_terms_expression(terms_collection):
+    terms_expression = []
+    for term_i in np.vstack(terms_collection):
+        term_i_exp = ''.join([
+                 r'' if not pow_ 
+            else r'x_%s' % k if pow_ == 1 
+            else r'x^%s_%s' % (pow_, k)
+            for k, pow_ in enumerate(term_i)
+        ])
+        terms_expression.append(term_i_exp)
+    return terms_expression
+    
 
 class ENN():
     def __init__(self, **config):

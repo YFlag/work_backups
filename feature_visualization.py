@@ -145,7 +145,7 @@ def style_initialize_(axes):
         for spine in ax.spines.values(): spine.set_visible(False)
 
 
-def style_initialize(plt):
+def style_setup(plt):
     plt.rc(
         'axes', 
         grid=True,
