@@ -186,28 +186,41 @@ def md_display(text):
         print(text)
     
 
-def connection_plot(axA, axB, dataA, dataB, density=1, *, color='g'):
-    """ 
-    `i`: sample index 
-    `sampling size`: sampling number in all samples
-    """
+def connection_plot(axA, axB, dataA, dataB, density=1, *, 
+                    colors='g', colors_style='random', alpha=1.):
+    """ `i`: sample index """
     assert dataA.shape == dataB.shape and dataA.ndim == 2
     sample_size = dataA.shape[0]
+    con_size = round(sample_size * density)
+    
+    if hasattr(plt.cm, colors):
+        for case in switch(colors_style):
+            if case('random'):
+                indices = np.random.random(con_size); break
+            if case('increase'):
+                indices = np.linspace(0, 1, con_size); break
+            if case('decrease'):
+                indices = list(reversed(np.linspace(0, 1, con_size))); break
+            if case('default'):
+                print('illegal `colors_style`: %s!' % colors_style)
+        cmap = getattr(plt.cm, colors)
+    else:
+        cmap = lambda *_: colors
+                           
     con_s = []
-    for i in np.linspace(
-        0, sample_size - 1, round(sample_size * density)
-    ).astype(np.int):
+    for i in np.rint(np.linspace(0, sample_size-1, con_size)):
         """ `axesB` is the first one. """
         """ 
         an equivalent form to params `xyA` and `xyB` assignment:
         *xy_coords[: : -1, :, i],
         """
+        color_idx = indices(i) if 'indices' in locals() else 0
         con = ConnectionPatch(
             xyA=dataA[i], xyB=dataB[i],
             coordsA='data', coordsB='data',
             arrowstyle='<-',
             axesA=axA, axesB=axB,
-            linewidth=0.7, color=color, alpha=0.5,
+            linewidth=0.7, color=cmap(color_idx), alpha=alpha,
         )
         axA.add_artist(con)
         con_s.append(con)

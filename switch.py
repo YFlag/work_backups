@@ -18,6 +18,7 @@ class switch():
         yield self.match
         raise StopIteration
         
+    """ TODO: multiple conditions to check """
     def check(match_func):
         """ or: without `self` argument. """
         def wrapper(self, *args, **kws):
