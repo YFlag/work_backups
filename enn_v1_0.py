@@ -84,11 +84,14 @@ class ENN():
         """ initialize the default config. ref: see `simple_nn.ipynb` """
         self.config = lambda: 0
 
+        self.config.max_degree = 1
         self.config.feature_dimension = 2
         self.config.num_of_class = 2
         self.config.space_mapping_process = (self.config.feature_dimension,
                                              self.config.num_of_class)
-        self.config.max_degree = 1
+        self.config.W_init = np.random.normal
+        self.config.bias_init = np.random.normal
+        
         self.config.learning_rate = 1
         self.config.batch_size = 100
         
@@ -107,7 +110,7 @@ class ENN():
         `W`: coefficients_for_all_dimension_in_next_space
         len of `fp_transformation`: quantity_of_variable_term
         """
-        self.W = np.random.normal(
+        self.W = self.config.params_init(
             size=(len(self.fp_transformation),
             self.config.space_mapping_process[1])
         )
