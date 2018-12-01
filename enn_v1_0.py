@@ -13,6 +13,8 @@ Design of the trail:
 import random
 import numpy as np
 
+from switch import switch
+
 """
 We start by designing the polynomial function of degree 3. To consider all possible terms \
 in polynomials, we can leverage the method of Cartesian product and make some changes on \
@@ -89,8 +91,7 @@ class ENN():
         self.config.num_of_class = 2
         self.config.space_mapping_process = (self.config.feature_dimension,
                                              self.config.num_of_class)
-        self.config.W_init = np.random.normal
-        self.config.bias_init = np.random.normal
+        self.config.params_init = 'normal'
         
         self.config.learning_rate = 1
         self.config.batch_size = 100
@@ -105,19 +106,40 @@ class ENN():
         """ `fp_trasformation`: feature_polynomial_transformation """
         self.fp_transformation  = np.vstack(get_terms_collection(
             self.config.feature_dimension, self.config.max_degree))
+        self.__init__params()
         
+        
+    # size & shape | init=`identity`; init=ENN.intializer.identity
+    def __init__params(self):
         """
         `W`: coefficients_for_all_dimension_in_next_space
         len of `fp_transformation`: quantity_of_variable_term
         """
-        self.W = self.config.params_init(
-            size=(len(self.fp_transformation),
-            self.config.space_mapping_process[1])
-        )
-        
+        W_shape = len(self.fp_transformation), self.config.space_mapping_process[1]
         """ `b`: constant_coefficient_for_all_dimension_in_next_space """
-        self.b = np.random.random((self.config.space_mapping_process[1], ))
+        b_shape = self.config.space_mapping_process[1], 
         
+        for case in switch(self.config.params_init):
+            if case('identity'):
+                self.W = np.zeros(W_shape)
+                self.W[np.diag_indices(min(W_shape))] = 1
+                self.b = np.zeros(b_shape)
+                break
+            if case('normal') \
+            or case(np.random.normal):
+                self.W = np.random.normal(size=W_shape)
+                self.b = np.random.normal(size=b_shape)
+                break
+            if case('random') \
+            or case(np.random.random):
+                self.W = np.random.random(W_shape)
+                self.b = np.random.random(b_shape)
+                break
+            if case('defaults'):
+                raise ValueError(
+                    'illegal params initializer: %s!' % self.config.params_init)
+    
+    
     def feature_transform(self, feature_input_s):
         feature_output_s = []
         for x in feature_input_s:
@@ -127,6 +149,7 @@ class ENN():
             ])            
         return np.array(feature_output_s)
             
+        
     """ backpropagation """
     """ note that `x_s_train` is just an alias of `feature_input_s`. """
     def fit(self, x_s_train, y_s_train, steps=1000, \
@@ -184,6 +207,7 @@ class ENN():
             trace_dict[k] = np.array(trace_dict[k])
         return trace_dict
 
+    
     # forward computing        
     def logits(self, x_s, W=None, b=None):
         assert (W is None) == (b is None)
@@ -192,6 +216,7 @@ class ENN():
         else:
             return self.feature_transform(x_s).dot(self.W) + self.b
 
+        
     def loss(self, x_s, y_s, W=None, b=None, keepdims=False):
         """
         return: 
@@ -204,6 +229,7 @@ class ENN():
             return np.mean(np.square(self.logits(x_s, W, b) - y_s))
         else:
             return np.square(self.logits(x_s, W, b) - y_s)
+
         
     def predict(self, x_s, W=None, b=None, one_hot=True):
         x_s = np.array(x_s)
@@ -215,6 +241,7 @@ class ENN():
             predict = np.zeros_like(x_s).astype(np.int)
             predict[range(len(x_s)), max_indices] = 1
         return predict
+    
     
     def accuracy(self, x_s, y_s, W=None, b=None):
         x_s, y_s = np.array(x_s), np.array(y_s)
