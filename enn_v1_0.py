@@ -32,7 +32,13 @@ it.
     - [power1, power2, ...] for each idx -> less clear meaning, more memory, but more clear in structure. 
 """
 def get_terms_collection(quantity_of_vars, max_df):
-    """ max_df: degree of freedom """
+    """ 
+    :param max_df:
+        - [int] degree of freedom
+    :return: 
+        - [list] a list of which each element is 2d ndarray type. Note the returned type is
+          LIST instead of ndarray!
+    """
     if max_df == 1:
         return [np.identity(quantity_of_vars, dtype=np.int32)]
 
@@ -79,11 +85,66 @@ def get_terms_expression(terms_collection):
         ])
         terms_expression.append(term_i_exp)
     return terms_expression
+
+
+def feature_polynomial_transform(feature_input_s, terms_collection):
+    """ x^T -> T(x^T) """
+    fp_transformation = np.vstack(terms_collection)
+    feature_output_s = []
+    for x in np.atleast_2d(feature_input_s):
+        feature_output_s.append([
+            sum(var ** power if power != 0 else 0 for var, power in zip(
+                x, term)) for term in fp_transformation
+        ])            
+    return np.array(feature_output_s)
+
+
+def get_non_linear_transform(T, terms_collection, space_dimension=2):
+    terms_collection = np.vstack(terms_collection)
+    assert terms_collection.ndim == space_dimension
+    return lambda feature_input_s: feature_polynomial_transform(feature_input_s, 
+                                                                terms_collection) @ T
+
+
+def non_linear_transform(input_s, feature_candidates, *linear_transform):
+    input_s = np.atleast_2d(input_s)
+
+    feature_candidates = np.row_stack(feature_candidates)
+    assert input_s.ndim == 2 and \
+           feature_candidates.ndim == 2 and \
+           input_s.shape[1] == feature_candidates.shape[1] and \
+           linear_transform
+    linear_transform = np.row_stack(linear_transform)
     
+    sample_size = input_s.shape[0]
+    original_space_dimension = input_s.shape[1]
+    latent_space_dimension = linear_transform.shape[0]
+    
+    all_feature_s_output_s = []
+    for feature_s in itertools.combinations_with_replacement(
+        feature_candidates, latent_space_dimension):
+        all_feature_s_output_s.append((
+            feature_s, 
+            feature_polynomial_transform(input_s, feature_s) @ \
+            linear_transform
+        ))
+    return all_feature_s_output_s
+
 
 class ENN():
     def __init__(self, **config):
-        """ initialize the default config. ref: see `simple_nn.ipynb` """
+        """ 
+        initialize the default config. ref: see `simple_nn.ipynb`.
+        
+        :param config:
+            - max_degree
+            - feature_dimension
+            - num_of_class
+            - space_mapping_process
+            - params_init: `normal` (default) | `random` | `identity`
+            - learning_rate: 1 (default)
+            - batch_size: 100 (default)
+        """
         self.config = lambda: 0
 
         self.config.max_degree = 1
@@ -104,7 +165,7 @@ class ENN():
                 raise AttributeError('Unknown hyper-parameter %s' % k)
         
         """ `fp_trasformation`: feature_polynomial_transformation """
-        self.fp_transformation  = np.vstack(get_terms_collection(
+        self.fp_transformation = np.vstack(get_terms_collection(
             self.config.feature_dimension, self.config.max_degree))
         self.__init__params()
         
@@ -114,9 +175,9 @@ class ENN():
         """
         `W`: coefficients_for_all_dimension_in_next_space
         len of `fp_transformation`: quantity_of_variable_term
+        `b`: constant_coefficient_for_all_dimension_in_next_space
         """
         W_shape = len(self.fp_transformation), self.config.space_mapping_process[1]
-        """ `b`: constant_coefficient_for_all_dimension_in_next_space """
         b_shape = self.config.space_mapping_process[1], 
         
         for case in switch(self.config.params_init):
@@ -138,18 +199,7 @@ class ENN():
             if case('defaults'):
                 raise ValueError(
                     'illegal params initializer: %s!' % self.config.params_init)
-    
-    
-    def feature_transform(self, feature_input_s):
-        feature_output_s = []
-        for x in feature_input_s:
-            feature_output_s.append([
-                sum(var ** power if power != 0 else 0 for var, power in zip(
-                    x, term)) for term in self.fp_transformation
-            ])            
-        return np.array(feature_output_s)
             
-        
     """ backpropagation """
     """ note that `x_s_train` is just an alias of `feature_input_s`. """
     def fit(self, x_s_train, y_s_train, steps=1000, \
@@ -172,7 +222,8 @@ class ENN():
             """ [IGNORE THIS] define them as function without actual object \
             reference can free memory at soon. and I think it's faster than \
             del statement. """
-            x_s = self.feature_transform(x_s_train[indices_batch])
+            x_s = feature_polynomial_transform(x_s_train[indices_batch],
+                                               self.fp_transformation)
             y_minus_f_s = x_s.dot(self.W) + self.b - y_s_train[indices_batch]
 
             """ 
@@ -212,9 +263,11 @@ class ENN():
     def logits(self, x_s, W=None, b=None):
         assert (W is None) == (b is None)
         if W is not None and b is not None:
-            return self.feature_transform(x_s).dot(W) + b
+            return feature_polynomail_transform(x_s, self.fp_transformation).dot(W) +\
+                   b
         else:
-            return self.feature_transform(x_s).dot(self.W) + self.b
+            return feature_polynomail_transform(x_s, self.fp_transformation).dot(self.W) +\
+                   self.b
 
         
     def loss(self, x_s, y_s, W=None, b=None, keepdims=False):
