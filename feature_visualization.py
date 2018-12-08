@@ -47,7 +47,7 @@ from switch import switch
 def sampling(sampling_style, data_style='numpy', sampling_magnitude=5):
     """
     :param sampling_magnitude:
-        int type. this can be viewed as 'an adaptive sample size', which is \
+        [int] this can be viewed as 'an adaptive sample size', which is \
         generated according to the `sampling_style` and feature dimension.
     """
     for case in switch(sampling_style):
@@ -179,16 +179,19 @@ def style_setup(plt):
 template = """<font face='Goudy Old Style' size=5><span style="color:rgb(0, 92, 84);">%s</span></font>"""
 template_2 = """<font face='Goudy Old Style'>%s</font>"""
 
-def md_display(text):
+def md_display(text, **kwargs):
     if IPython.get_ipython():
         display(Markdown(template % text))
     else:
-        print(text)
-    
-
+        print(text, **kwargs)
+        
+        
 def connection_plot(axA, axB, dataA, dataB, density=1, *, 
-                    colors='g', colors_style='random', alpha=1.):
-    """ `i`: sample index """
+                    colors='g', colors_style='increase', alpha=0.4):
+    """
+    :param: dataA, dataB
+        [ndarray] 2d numpy-style array.
+    """
     assert dataA.shape == dataB.shape and dataA.ndim == 2
     sample_size = dataA.shape[0]
     con_size = round(sample_size * density)
@@ -196,31 +199,35 @@ def connection_plot(axA, axB, dataA, dataB, density=1, *,
     if hasattr(plt.cm, colors):
         for case in switch(colors_style):
             if case('random'):
-                indices = np.random.random(con_size); break
+                idx_map = np.random.random(sample_size); break
             if case('increase'):
-                indices = np.linspace(0, 1, con_size); break
+                idx_map = np.linspace(0, 1, sample_size); break
             if case('decrease'):
-                indices = list(reversed(np.linspace(0, 1, con_size))); break
+                idx_map = list(reversed(np.linspace(0, 1, sample_size))); break
             if case('default'):
-                print('illegal `colors_style`: %s!' % colors_style)
+                raise ValueError('illegal `colors_style`: %s!' % colors_style)
         cmap = getattr(plt.cm, colors)
+        color_pick = lambda i: cmap(idx_map[i])
     else:
-        cmap = lambda *_: colors
+        color_pick = lambda *_: colors
                            
     con_s = []
-    for i in np.rint(np.linspace(0, sample_size-1, con_size)):
+    """ `i`: sample index """
+    for i in np.rint(np.linspace(0, sample_size-1, con_size)).astype(int):
+#         import pdb
+#         pdb.set_trace()
         """ `axesB` is the first one. """
         """ 
         an equivalent form to params `xyA` and `xyB` assignment:
         *xy_coords[: : -1, :, i],
         """
-        color_idx = indices(i) if 'indices' in locals() else 0
         con = ConnectionPatch(
             xyA=dataA[i], xyB=dataB[i],
             coordsA='data', coordsB='data',
             arrowstyle='<-',
+            linestyle='--',
             axesA=axA, axesB=axB,
-            linewidth=0.7, color=cmap(color_idx), alpha=alpha,
+            linewidth=0.7, color=color_pick(i), alpha=alpha,
         )
         axA.add_artist(con)
         con_s.append(con)

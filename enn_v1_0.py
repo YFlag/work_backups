@@ -11,6 +11,7 @@ Design of the trail:
 """
 
 import random
+import itertools
 import numpy as np
 
 from switch import switch
@@ -89,17 +90,21 @@ def get_terms_expression(terms_collection):
 
 def feature_polynomial_transform(feature_input_s, terms_collection):
     """ x^T -> T(x^T) """
-    fp_transformation = np.vstack(terms_collection)
-    feature_output_s = []
-    for x in np.atleast_2d(feature_input_s):
-        feature_output_s.append([
-            sum(var ** power if power != 0 else 0 for var, power in zip(
-                x, term)) for term in fp_transformation
-        ])            
-    return np.array(feature_output_s)
+#     import pdb
+#     pdb.set_trace()
+    return feature_input_s
+#     fp_transformation = np.vstack(terms_collection)
+#     feature_output_s = []
+#     for x in np.atleast_2d(feature_input_s):
+#         feature_output_s.append([
+#             sum(var ** power if power != 0 else 0 for var, power in zip(
+#                 x, term)) for term in fp_transformation
+#         ])            
+#     return np.array(feature_output_s)
 
 
 def get_non_linear_transform(T, terms_collection, space_dimension=2):
+    """ non-linearize the linear transformation `T`. returns a function. """
     terms_collection = np.vstack(terms_collection)
     assert terms_collection.ndim == space_dimension
     return lambda feature_input_s: feature_polynomial_transform(feature_input_s, 
@@ -107,6 +112,23 @@ def get_non_linear_transform(T, terms_collection, space_dimension=2):
 
 
 def non_linear_transform(input_s, feature_candidates, *linear_transform):
+    """ 
+    Non-linearize all linear transformations in `linear_transform`, and
+        stack them together to get a mixed-style non-linear transformation.
+        then apply it to the inputs. note that the non-linear map obtained is 
+        not unique and are varied according to `feature_candidates`. all 
+        possible output_s are packed into a list `all_feature_s_output_s`.
+    
+    :param feature_candidates:
+        [ndarray] a sequence of polynomial terms, each of which is represented 
+        by a 1d array in the sequence. e.g. `[1, 0, 2]` stands for `x * z^2`.
+        note that the number of terms should be enough for the non-linear
+        transformation to sample. Precisely, it should be larger than sum of
+        row # of all linear transformations in `linear_transform`.
+    :param linear_transform:
+        [variable-length arguement] each element is a valid 2d array-like (matrix)
+        which denotes a linear transformation.
+    """
     input_s = np.atleast_2d(input_s)
 
     feature_candidates = np.row_stack(feature_candidates)
@@ -137,9 +159,9 @@ class ENN():
         initialize the default config. ref: see `simple_nn.ipynb`.
         
         :param config:
-            - max_degree
-            - feature_dimension
-            - num_of_class
+            - max_degree: 1 (default)
+            - feature_dimension: 2 (default)
+            - num_of_class: 2 (default) [design into dynamic and determined in train?]
             - space_mapping_process
             - params_init: `normal` (default) | `random` | `identity`
             - learning_rate: 1 (default)
@@ -150,8 +172,7 @@ class ENN():
         self.config.max_degree = 1
         self.config.feature_dimension = 2
         self.config.num_of_class = 2
-        self.config.space_mapping_process = (self.config.feature_dimension,
-                                             self.config.num_of_class)
+        
         self.config.params_init = 'normal'
         
         self.config.learning_rate = 1
@@ -163,6 +184,9 @@ class ENN():
                 setattr(self.config, k, v)
             else:
                 raise AttributeError('Unknown hyper-parameter %s' % k)
+        """ Attention This!! """
+        self.config.space_mapping_process = (self.config.feature_dimension,
+                                             self.config.num_of_class)
         
         """ `fp_trasformation`: feature_polynomial_transformation """
         self.fp_transformation = np.vstack(get_terms_collection(
@@ -189,12 +213,17 @@ class ENN():
             if case('normal') \
             or case(np.random.normal):
                 self.W = np.random.normal(size=W_shape)
-                self.b = np.random.normal(size=b_shape)
+                self.b = np.zeros(b_shape)
                 break
             if case('random') \
             or case(np.random.random):
                 self.W = np.random.random(W_shape)
                 self.b = np.random.random(b_shape)
+                break
+            if case('ones') \
+            or case(np.ones):
+                self.W = np.ones(W_shape)
+                self.b = 0.1 * np.ones(b_shape)
                 break
             if case('defaults'):
                 raise ValueError(
@@ -214,6 +243,9 @@ class ENN():
         }
         
         sample_size = len(x_s_train)
+        transformed_x_s_train = feature_polynomial_transform(
+                    x_s_train, self.fp_transformation)
+        print('transforming completed.')
         for step in range(steps):
             indices_batch = random.sample(
                 range(sample_size), self.config.batch_size)
@@ -222,8 +254,12 @@ class ENN():
             """ [IGNORE THIS] define them as function without actual object \
             reference can free memory at soon. and I think it's faster than \
             del statement. """
-            x_s = feature_polynomial_transform(x_s_train[indices_batch],
-                                               self.fp_transformation)
+#             if 'transformed_x_s_train' not in locals():
+                
+#             else:
+            x_s = x_s_train[indices_batch]
+#             x_s = feature_polynomial_transform(x_s_train[indices_batch],
+#                                                self.fp_transformation)
             y_minus_f_s = x_s.dot(self.W) + self.b - y_s_train[indices_batch]
 
             """ 
@@ -240,9 +276,26 @@ class ENN():
                 pd_of_l_on_f_s[:, np.newaxis, :], axis=0
             )
             b_gradients = np.mean(pd_of_l_on_f_s, axis=0)
-                        
+            
+            """ this scaling has no physical meaning. """
+#             W_gradients = W_gradients / (500*max(np.max(W_gradients), 
+#                                             abs(np.min(W_gradients)))
+#                                         )
+#             b_gradients = b_gradients / (500*max(np.max(b_gradients), 
+#                                             abs(np.min(b_gradients))) )
+
+            scaling_factor_js = np.sum(W_gradients, axis=0) + b_gradients
+            W_gradients = W_gradients / scaling_factor_js
+            b_gradients = b_gradients / scaling_factor_js
+            
+#             import pdb
+#             pdb.set_trace()
             self.W -= self.config.learning_rate * W_gradients
             self.b -= self.config.learning_rate * b_gradients
+            
+            if step % 5 == 0:
+                print(self.loss(x_s_train, y_s_train), '|', 
+                      self.accuracy(x_s_train, y_s_train))
             
             if vars_trace_recording:
                 """ attention this! """
@@ -263,10 +316,10 @@ class ENN():
     def logits(self, x_s, W=None, b=None):
         assert (W is None) == (b is None)
         if W is not None and b is not None:
-            return feature_polynomail_transform(x_s, self.fp_transformation).dot(W) +\
+            return feature_polynomial_transform(x_s, self.fp_transformation).dot(W) +\
                    b
         else:
-            return feature_polynomail_transform(x_s, self.fp_transformation).dot(self.W) +\
+            return feature_polynomial_transform(x_s, self.fp_transformation).dot(self.W) +\
                    self.b
 
         
@@ -276,8 +329,10 @@ class ENN():
             ndarray type with shape of (len(x_s), ).
         """
         x_s, y_s = np.array(x_s), np.array(y_s)
-        assert x_s.shape == y_s.shape
+#         assert x_s.shape == y_s.shape
         assert (W is None) == (b is None)
+#         import pdb
+#         pdb.set_trace()
         if not keepdims:
             return np.mean(np.square(self.logits(x_s, W, b) - y_s))
         else:
@@ -287,18 +342,19 @@ class ENN():
     def predict(self, x_s, W=None, b=None, one_hot=True):
         x_s = np.array(x_s)
         assert (W is None) == (b is None)
-        max_indices = np.argmax(self.logits(x_s, W, b), 1)
+        logits = self.logits(x_s, W, b)
+        max_indices = np.argmax(logits, 1)
         if not one_hot:
             predict = max_indices
         else:
-            predict = np.zeros_like(x_s).astype(np.int)
+            predict = np.zeros_like(logits).astype(np.int)
             predict[range(len(x_s)), max_indices] = 1
         return predict
     
     
     def accuracy(self, x_s, y_s, W=None, b=None):
         x_s, y_s = np.array(x_s), np.array(y_s)
-        assert x_s.shape == y_s.shape
+#         assert x_s.shape == y_s.shape
         predict = self.predict(x_s, W, b, False)
         return np.mean(np.equal(predict, np.argmax(y_s, 1)))
 
